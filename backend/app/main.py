@@ -4,7 +4,8 @@ from fastapi.responses import JSONResponse
 import aiofiles
 import os
 import logging
-from model_handler import get_detector
+
+from app.model_handler import get_detector
 import uuid
 
 # Set up logging
@@ -159,4 +160,4 @@ async def models_info():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8080)
