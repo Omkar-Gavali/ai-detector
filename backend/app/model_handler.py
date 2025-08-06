@@ -1,4 +1,7 @@
 import torch
+# Monkey-patch: alias uint64 to int64 so Transformers won’t error out
+if not hasattr(torch, "uint64"):
+    torch.uint64 = torch.int64
 import torch.nn as nn
 from torchvision import models, transforms
 from transformers import AutoImageProcessor, ViTForImageClassification
