@@ -3,8 +3,24 @@
 import { CheckCircle, XCircle, AlertCircle, Loader2 } from 'lucide-react'
 import { Progress } from '@/components/ui/progress'
 
+// Fix: Define proper interface instead of any
+interface AnalysisResult {
+  success: boolean
+  error?: string
+  result?: {
+    prediction: string
+    confidence: number
+    confidence_percentage: string
+    models: {
+      resnet: { prediction: string; confidence: number; accuracy: string }
+      vit: { prediction: string; confidence: number; accuracy: string }
+    }
+    recommendation: string
+  }
+}
+
 interface Props {
-  result: any
+  result: AnalysisResult | null
   isLoading: boolean
 }
 
@@ -47,6 +63,22 @@ export default function ResultsDisplay({ result, isLoading }: Props) {
   }
 
   const { result: analysisResult } = result
+  if (!analysisResult) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+        <div className="flex items-center space-x-3">
+          <XCircle className="h-6 w-6 text-red-600" />
+          <div>
+            <h3 className="text-red-800 font-medium">No Analysis Data</h3>
+            <p className="text-red-600 text-sm mt-1">
+              Analysis completed but no data returned
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const isAIGenerated = analysisResult.prediction === 'AI-Generated'
   const confidence = analysisResult.confidence * 100
 

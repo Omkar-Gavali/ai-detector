@@ -4,11 +4,28 @@ import { useCallback, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import axios from 'axios'
 import { Upload, Image as ImageIcon } from 'lucide-react'
+import Image from 'next/image' // Fix: Use Next.js Image component
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
+// Fix: Define proper interface instead of any
+interface AnalysisResult {
+  success: boolean
+  error?: string
+  result?: {
+    prediction: string
+    confidence: number
+    confidence_percentage: string
+    models: {
+      resnet: { prediction: string; confidence: number; accuracy: string }
+      vit: { prediction: string; confidence: number; accuracy: string }
+    }
+    recommendation: string
+  }
+}
+
 interface Props {
-  onResult: (result: any) => void
+  onResult: (result: AnalysisResult | null) => void
   onLoading: (loading: boolean) => void
 }
 
@@ -43,11 +60,13 @@ export default function ImageUploader({ onResult, onLoading }: Props) {
       })
 
       onResult(response.data)
-    } catch (error: any) {
+    } catch (error) {
       console.error('Upload error:', error)
       onResult({
         success: false,
-        error: error.response?.data?.detail || 'Failed to analyze image'
+        error: axios.isAxiosError(error) && error.response?.data?.detail 
+          ? error.response.data.detail 
+          : 'Failed to analyze image'
       })
     } finally {
       onLoading(false)
@@ -96,7 +115,7 @@ export default function ImageUploader({ onResult, onLoading }: Props) {
         </div>
       </div>
 
-      {/* Image Preview */}
+      {/* Image Preview - Fix: Use Next.js Image component */}
       {uploadedImage && (
         <div className="bg-gray-50 rounded-lg p-4">
           <div className="flex items-center space-x-3 mb-3">
@@ -106,11 +125,16 @@ export default function ImageUploader({ onResult, onLoading }: Props) {
             </span>
           </div>
           
-          <img 
-            src={uploadedImage} 
-            alt="Uploaded preview"
-            className="max-w-full max-h-64 mx-auto rounded-lg object-contain"
-          />
+          <div className="relative w-full max-w-md mx-auto">
+            <Image 
+              src={uploadedImage} 
+              alt="Uploaded preview"
+              width={400}
+              height={256}
+              className="rounded-lg object-contain"
+              style={{ maxHeight: '16rem' }}
+            />
+          </div>
         </div>
       )}
     </div>
