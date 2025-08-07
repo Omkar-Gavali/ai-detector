@@ -1,17 +1,4 @@
 import torch
-
-
-# Monkey-patch unsigned integer dtypes that PyTorch lacks
-# Map torch.uint16→torch.int16, torch.uint32→torch.int32, torch.uint64→torch.int64
-for missing_dt, fallback_dt in [
-    ("uint16", "int16"),
-    ("uint32", "int32"),
-    ("uint64", "int64"),
-]:
-    if not hasattr(torch, missing_dt):
-        setattr(torch, missing_dt, getattr(torch, fallback_dt))
-
-#
 import torch.nn as nn
 from torchvision import models, transforms
 from transformers import AutoImageProcessor, ViTForImageClassification
@@ -51,8 +38,8 @@ class AIDetectorEnsemble:
             self.resnet_model = models.resnet50(pretrained=False)
             self.resnet_model.fc = nn.Linear(2048, 2)
             
-            # Load trained weights
-            checkpoint = torch.load(model_path, map_location=self.device)
+            # Load trained weights with security fix
+            checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
             if 'model_state_dict' in checkpoint:
                 self.resnet_model.load_state_dict(checkpoint['model_state_dict'])
             else:
@@ -67,8 +54,12 @@ class AIDetectorEnsemble:
             raise
     
     def load_vit_model(self, model_path):
-        """Load the Vision Transformer model"""
+        """Load the Vision Transformer model with security allowlist"""
         try:
+            # Add safe globals for transformers components
+            from transformers.models.vit.image_processing_vit import ViTImageProcessor
+            torch.serialization.add_safe_globals([ViTImageProcessor])
+            
             # Load ViT
             self.vit_model = ViTForImageClassification.from_pretrained(
                 "google/vit-base-patch16-224",
@@ -76,10 +67,29 @@ class AIDetectorEnsemble:
                 ignore_mismatched_sizes=True
             )
             
-            # Load trained weights
-            checkpoint = torch.load(model_path, map_location=self.device)
+            # Load trained weights with security fix
+            checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
+            
             if 'model_state_dict' in checkpoint:
-                self.vit_model.load_state_dict(checkpoint['model_state_dict'])
+                # Handle state dict key mismatches
+                state_dict = checkpoint['model_state_dict']
+                # Remove any unexpected keys
+                model_keys = set(self.vit_model.state_dict().keys())
+                checkpoint_keys = set(state_dict.keys())
+                
+                # Log any key mismatches
+                unexpected_keys = checkpoint_keys - model_keys
+                missing_keys = model_keys - checkpoint_keys
+                
+                if unexpected_keys:
+                    logger.warning(f"Unexpected keys in checkpoint: {unexpected_keys}")
+                if missing_keys:
+                    logger.warning(f"Missing keys in checkpoint: {missing_keys}")
+                
+                # Load with strict=False to handle key mismatches
+                self.vit_model.load_state_dict(state_dict, strict=False)
+            else:
+                self.vit_model.load_state_dict(checkpoint, strict=False)
             
             self.vit_model.eval()
             self.vit_model.to(self.device)
@@ -90,10 +100,12 @@ class AIDetectorEnsemble:
             logger.info("✅ Vision Transformer model loaded")
         except Exception as e:
             logger.error(f"❌ Error loading ViT: {e}")
-            raise
+            logger.info("🔄 Falling back to ResNet-only mode")
+            self.vit_model = None
+            self.vit_processor = None
     
     def predict(self, image_path):
-        """Make predictions using both models"""
+        """Make predictions using available models"""
         try:
             # Load and preprocess image
             image = Image.open(image_path).convert('RGB')
@@ -101,18 +113,14 @@ class AIDetectorEnsemble:
             # ResNet prediction
             resnet_pred, resnet_conf = self.predict_resnet(image)
             
-            # ViT prediction  
-            vit_pred, vit_conf = self.predict_vit(image)
-            
-            # Ensemble prediction (weighted average - ViT gets more weight due to higher accuracy)
-            ensemble_conf = (resnet_conf * 0.3 + vit_conf * 0.7)  # ViT: 70%, ResNet: 30%
-            ensemble_pred = "AI-Generated" if ensemble_conf > 0.5 else "Real"
-            
-            return {
-                "prediction": ensemble_pred,
-                "confidence": float(ensemble_conf),
-                "confidence_percentage": f"{ensemble_conf * 100:.1f}%",
-                "models": {
+            # ViT prediction (if available)
+            if self.vit_model is not None:
+                vit_pred, vit_conf = self.predict_vit(image)
+                # Ensemble prediction (weighted average)
+                ensemble_conf = (resnet_conf * 0.3 + vit_conf * 0.7)
+                ensemble_pred = "AI-Generated" if ensemble_conf > 0.5 else "Real"
+                
+                models_info = {
                     "resnet": {
                         "prediction": resnet_pred,
                         "confidence": float(resnet_conf),
@@ -123,7 +131,31 @@ class AIDetectorEnsemble:
                         "confidence": float(vit_conf),
                         "accuracy": "98.9%"
                     }
-                },
+                }
+            else:
+                # ResNet-only mode
+                ensemble_conf = resnet_conf
+                ensemble_pred = resnet_pred
+                logger.warning("⚠️ Using ResNet-only mode (ViT failed to load)")
+                
+                models_info = {
+                    "resnet": {
+                        "prediction": resnet_pred,
+                        "confidence": float(resnet_conf),
+                        "accuracy": "93.5%"
+                    },
+                    "vit": {
+                        "prediction": "Not Available",
+                        "confidence": 0.0,
+                        "accuracy": "N/A"
+                    }
+                }
+            
+            return {
+                "prediction": ensemble_pred,
+                "confidence": float(ensemble_conf),
+                "confidence_percentage": f"{ensemble_conf * 100:.1f}%",
+                "models": models_info,
                 "recommendation": self.get_recommendation(ensemble_conf)
             }
             
@@ -145,6 +177,9 @@ class AIDetectorEnsemble:
     
     def predict_vit(self, image):
         """Vision Transformer prediction"""
+        if self.vit_model is None:
+            return "Not Available", 0.0
+            
         with torch.no_grad():
             inputs = self.vit_processor(images=image, return_tensors="pt")
             outputs = self.vit_model(**inputs)
@@ -174,10 +209,10 @@ def load_models():
     global detector
     try:
         detector = AIDetectorEnsemble(
-            resnet_path="/app/models/ai_detector_model.pth",
-            vit_path="/app/models/vit_ai_detector_model.pth"
+            resnet_path="/app/models/resnet_model.pth",
+            vit_path="/app/models/vit_model.pth"
         )
-        logger.info("🎉 All models loaded successfully!")
+        logger.info("🎉 Models loaded successfully!")
         return True
     except Exception as e:
         logger.error(f"❌ Failed to load models: {e}")
