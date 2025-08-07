@@ -1,7 +1,17 @@
 import torch
-# Monkey-patch: alias uint64 to int64 so Transformers won’t error out
-if not hasattr(torch, "uint64"):
-    torch.uint64 = torch.int64
+
+
+# Monkey-patch unsigned integer dtypes that PyTorch lacks
+# Map torch.uint16→torch.int16, torch.uint32→torch.int32, torch.uint64→torch.int64
+for missing_dt, fallback_dt in [
+    ("uint16", "int16"),
+    ("uint32", "int32"),
+    ("uint64", "int64"),
+]:
+    if not hasattr(torch, missing_dt):
+        setattr(torch, missing_dt, getattr(torch, fallback_dt))
+
+#
 import torch.nn as nn
 from torchvision import models, transforms
 from transformers import AutoImageProcessor, ViTForImageClassification
