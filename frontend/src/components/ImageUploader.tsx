@@ -4,11 +4,11 @@ import { useCallback, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import axios from 'axios'
 import { Upload, Image as ImageIcon } from 'lucide-react'
-import Image from 'next/image' // Fix: Use Next.js Image component
+import Image from 'next/image'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
-// Fix: Define proper interface instead of any
+// Consistent interface definition
 interface AnalysisResult {
   success: boolean
   error?: string
@@ -56,10 +56,10 @@ export default function ImageUploader({ onResult, onLoading }: Props) {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
-        timeout: 30000, // 30 second timeout
+        timeout: 30000,
       })
 
-      onResult(response.data)
+      onResult(response.data as AnalysisResult)
     } catch (error) {
       console.error('Upload error:', error)
       onResult({
@@ -79,7 +79,7 @@ export default function ImageUploader({ onResult, onLoading }: Props) {
       'image/*': ['.jpg', '.jpeg', '.png', '.webp']
     },
     maxFiles: 1,
-    maxSize: 10 * 1024 * 1024, // 10MB
+    maxSize: 10 * 1024 * 1024,
   })
 
   return (
@@ -115,7 +115,7 @@ export default function ImageUploader({ onResult, onLoading }: Props) {
         </div>
       </div>
 
-      {/* Image Preview - Fix: Use Next.js Image component */}
+      {/* Image Preview */}
       {uploadedImage && (
         <div className="bg-gray-50 rounded-lg p-4">
           <div className="flex items-center space-x-3 mb-3">
@@ -125,14 +125,12 @@ export default function ImageUploader({ onResult, onLoading }: Props) {
             </span>
           </div>
           
-          <div className="relative w-full max-w-md mx-auto">
+          <div className="relative w-full max-w-md mx-auto h-64">
             <Image 
               src={uploadedImage} 
               alt="Uploaded preview"
-              width={400}
-              height={256}
+              fill
               className="rounded-lg object-contain"
-              style={{ maxHeight: '16rem' }}
             />
           </div>
         </div>

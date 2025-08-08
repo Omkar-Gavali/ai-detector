@@ -6,8 +6,24 @@ import ResultsDisplay from '@/components/ResultsDisplay'
 import Header from '@/components/Header'
 import Footer from '@/components/Footer'
 
+// Define proper type for result
+interface AnalysisResult {
+  success: boolean
+  error?: string
+  result?: {
+    prediction: string
+    confidence: number
+    confidence_percentage: string
+    models: {
+      resnet: { prediction: string; confidence: number; accuracy: string }
+      vit: { prediction: string; confidence: number; accuracy: string }
+    }
+    recommendation: string
+  }
+}
+
 export default function Home() {
-  const [result, setResult] = useState(null)
+  const [result, setResult] = useState<AnalysisResult | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
   return (
